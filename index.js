@@ -123,7 +123,7 @@ client.on('message', async (message) => {
                 console.log('Traitement du message réussi, génération du rapport...');
 
                 // Générer le document Word
-                exec('python generate_doc.py', {
+                /*exec('python generate_doc.py', {
                     timeout: 30000,
                     maxBuffer: 1024 * 1024 * 5
                 }, (error, stdout, stderr) => {
@@ -139,7 +139,27 @@ client.on('message', async (message) => {
 
                     console.log('Rapport généré avec succès !');
                     sendReportToGroup();
-                });
+                });*/
+                // ⏳ Délai de 30 minutes avant génération du doc
+                setTimeout(() => {
+                    exec('python generate_doc.py', {
+                        timeout: 30000,
+                        maxBuffer: 1024 * 1024 * 5
+                    }, (error, stdout, stderr) => {
+                        console.log('=== Sortie de generate_doc.py ===');
+                        if (stdout) console.log(stdout);
+                        if (stderr) console.error('Erreurs:', stderr);
+
+                        if (error) {
+                            console.error('Erreur lors de la génération du document:');
+                            console.error(error);
+                            return;
+                        }
+
+                        console.log('Rapport généré avec succès !');
+                        sendReportToGroup(); // Appelle la fonction pour envoyer le doc
+                    });
+                }, 1 * 60 * 1000); // 30 minutes en millisecondes
             });
         }
     } catch (error) {
