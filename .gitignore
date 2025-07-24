@@ -1,0 +1,14 @@
+# Fichiers temporaires et caches
+__pycache__/
+*.pyc
+*.log
+.env
+node_modules/
+temp_message.txt
+Daily_Meeting_Report.docx
+data/*.xlsx
+
+# Caches WhatsApp Web
+.wwebjs_cache/
+wwebjs_auth/
+
