@@ -4,68 +4,82 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Utilisation de LocalAuth pour la persistance automatique de la session
+// Configuration du client WhatsApp
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: './wwebjs_auth' // dossier où la session est stockée
-    })
+        dataPath: './wwebjs_auth'
+    }),
+    puppeteer: {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
 });
 
+// Afficher le QR Code pour la connexion
 client.on('qr', (qr) => {
     qrcode.generate(qr, { small: true });
-    console.log('Scanne le QR code ci-dessus pour connecter le bot à WhatsApp (uniquement au premier lancement).');
+    console.log('Scannez le QR Code avec votre téléphone pour vous connecter');
 });
 
-client.on('ready', async () => {
-    console.log('✅ Bot WhatsApp prêt.');
-    const chats = await client.getChats();
-    const groups = chats.filter(chat => chat.isGroup);
-    groups.forEach(group => {
-        console.log(`Nom: ${group.name} | ID: ${group.id._serialized}`);
-    });
+// Quand la connexion est établie
+client.on('ready', () => {
+    console.log('✅ Bot WhatsApp prêt !');
 });
 
-// Fonction pour envoyer le document Word dans un groupe WhatsApp
-async function sendReportToGroup(groupId) {
-    const filePath = path.join(__dirname, 'Daily_Meeting_Report.docx');
-    if (fs.existsSync(filePath)) {
-        const media = MessageMedia.fromFilePath(filePath);
-        await client.sendMessage(groupId, media, { caption: "Voici le rapport daily du jour." });
-        console.log('📄 Rapport envoyé au groupe:', groupId);
-    } else {
-        console.error('❌ Fichier Daily_Meeting_Report.docx introuvable.');
-    }
-}
+// Traitement des messages
+client.on('message', async (message) => {
+    try {
+        // Vérifier si le message commence par #daily
+        if (message.body.startsWith('#daily')) {
+            const sender = await message.getContact();
+            const senderName = sender.pushname || sender.number;
+            console.log(`Nouveau rapport reçu de ${senderName}`);
 
-client.on('message', message => {
-    if (message.body.startsWith('#daily')) {
-        const cleanMessage = message.body.replace(/\"/g, '');
-        fs.writeFileSync("temp_message.txt", cleanMessage);
+            // Sauvegarder le message temporairement
+            fs.writeFileSync('temp_message.txt', message.body);
 
-        exec(`venv\\Scripts\\python.exe process_message.py`, (error, stdout, stderr) => {
-    if (error) {
-        console.error(`❌ Erreur : ${error.message}`);
-    }
-    if (stderr) {
-        console.error(`⚠️ stderr: ${stderr}`);
-    }
-    console.log(`📩 Résultat : ${stdout}`);
+            // Traiter le message
+            exec('python process_message.py', (error, stdout, stderr) => {
+                if (error) {
+                    console.error(`Erreur: ${error.message}`);
+                    return;
+                }
+                if (stderr) {
+                    console.error(`Erreur: ${stderr}`);
+                    return;
+                }
 
-    // Génère le document Word après la mise à jour Excel
-    exec(`venv\\Scripts\\python.exe generate_doc.py`, (error2, stdout2, stderr2) => {
-        if (error2) {
-            console.error(`❌ Erreur (génération docx) : ${error2.message}`);
+                console.log('Traitement du message réussi, génération du rapport...');
+
+                // Générer le document Word
+                exec('python generate_doc.py', (error, stdout, stderr) => {
+                    if (error) {
+                        console.error(`Erreur génération doc: ${error.message}`);
+                        return;
+                    }
+
+                    console.log('Rapport généré avec succès !');
+
+                    // Envoyer le rapport dans le groupe
+                    const docPath = path.join(__dirname, 'Daily_Meeting_Report.docx');
+                    if (fs.existsSync(docPath)) {
+                        const media = MessageMedia.fromFilePath(docPath);
+                        message.reply(media, null, {
+                            caption: '📊 Voici le rapport quotidien mis à jour !'
+                        });
+                    }
+                });
+            });
         }
-        if (stderr2) {
-            console.error(`⚠️ stderr (génération docx): ${stderr2}`);
-        }
-        console.log(`📄 Génération Word : ${stdout2}`);
-
-        // Envoi du rapport Word dans le groupe
-        sendReportToGroup('237655911568-1628088507@g.us');
-    });
-});
+    } catch (error) {
+        console.error('Erreur lors du traitement du message:', error);
     }
 });
 
+// Gestion des erreurs
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Erreur non gérée:', reason);
+});
+
+// Démarrer le client
 client.initialize();
